@@ -1,5 +1,9 @@
+# USER_PROMPT = """
+# Find all messages that are related to discounts on cars
+# """
+
 USER_PROMPT = """
-Find all messages that are related to discounts on cars
+Find all messages that have words on it.
 """
 
 SYSTEM_PROMPT = """
