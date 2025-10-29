@@ -16,6 +16,7 @@ import prompts
 from monitor import generate_response
 from config import get_logger
 from channel_store import add_channel, remove_channel, get_monitored_channels
+from query_store import get_current_query, set_current_query
 
 logger = get_logger(__name__)
 
@@ -41,7 +42,7 @@ async def start(update, context):
         "/addchannel <name> - Add a channel to monitor\n"
         "/removechannel <name> - Remove a channel from monitoring\n"
         "/listmonitored - Show currently monitored channels\n\n"
-        f"Current search query: {prompts.USER_PROMPT}"
+        f"Current search query: {get_current_query()}"
     )
     await update.message.reply_text(welcome_text)
 
@@ -57,21 +58,25 @@ async def set_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Update the module-level USER_PROMPT
-    prompts.USER_PROMPT = query
-    
-    await update.message.reply_text(
-        f"✅ Search query updated!\n\n"
-        f"New query: {prompts.USER_PROMPT}\n\n"
-        f"The monitor will now filter messages based on this query."
-    )
-    logger.info(f"Search query updated to: {prompts.USER_PROMPT}")
+    # Update the query using the query store (persists across processes)
+    if set_current_query(query):
+        await update.message.reply_text(
+            f"✅ Search query updated!\n\n"
+            f"New query: {query}\n\n"
+            f"The monitor will now filter messages based on this query."
+        )
+        logger.info(f"Search query updated to: {query}")
+    else:
+        await update.message.reply_text(
+            "❌ Failed to update search query. Please try again."
+        )
+        logger.error(f"Failed to save query: {query}")
 
 
 async def show_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show the current search query."""
     await update.message.reply_text(
-        f"Current search query:\n{prompts.USER_PROMPT}"
+        f"Current search query:\n{get_current_query()}"
     )
 
 async def get_my_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -296,7 +301,7 @@ def main():
     print("  /addchannel <name> - Add a channel to monitor")
     print("  /removechannel <name> - Remove a channel from monitoring")
     print("  /listmonitored - Show currently monitored channels")
-    print(f"\nCurrent search query: {prompts.USER_PROMPT}")
+    print(f"\nCurrent search query: {get_current_query()}")
     print("\nPress Ctrl+C to stop the bot")
 
     application.run_polling()

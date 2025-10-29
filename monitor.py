@@ -10,7 +10,9 @@ from typing import List, Optional, Sequence, Set
 import httpx
 from telethon import TelegramClient, events
 
-from prompts import USER_PROMPT, SYSTEM_PROMPT
+import prompts
+#from prompts import USER_PROMPT, SYSTEM_PROMPT
+from query_store import get_current_query
 
 from ai import MistralAIProcessor
 from config import get_logger
@@ -53,7 +55,7 @@ class TelegramChannelMonitor:
     def __init__(
         self,
         custom_prompt: Optional[str] = None,
-        user_prompt: str = USER_PROMPT
+        user_prompt: Optional[str] = None
     ) -> None:
         self.api_id = os.getenv("api_id")
         self.api_hash = os.getenv("api_hash")
@@ -67,7 +69,7 @@ class TelegramChannelMonitor:
         self.monitored_channels: Set[int] = set()
         self.ai_processor = MistralAIProcessor()
         self.user_entity = None
-        self.user_prompt = user_prompt
+        self.user_prompt = user_prompt or get_current_query()
 
     async def start(self) -> None:
         """Start the Telegram client and authenticate."""
@@ -138,7 +140,7 @@ class TelegramChannelMonitor:
                 bot_message += f"**Username:** @{username}\n"
             bot_message += f"**Sender:** {sender_name}\n"
             bot_message += f"**Date:** {message_date}\n"
-            bot_message += f"**Query:** {self.user_prompt}\n\n"
+            bot_message += f"**Query:** {get_current_query()}\n\n"
             
             # Add clickable link to original message
             if message_link:
@@ -221,7 +223,7 @@ class TelegramChannelMonitor:
             context_message += f"**Channel:** {channel_name}\n"
             if username and username != "N/A":
                 context_message += f"**Username:** @{username}\n"
-            context_message += f"**Query Match:** {self.user_prompt}\n"
+            context_message += f"**Query Match:** {get_current_query()}\n"
             context_message += f"**Relevance:** ✅ AI Approved"
 
             # Create message link if possible
@@ -335,13 +337,18 @@ class TelegramChannelMonitor:
                     print("\nDEBUG MONITOR: ===============================")
                     print(f"DEBUG MONITOR: Channel ID: {chat.id}")
                     print(f"DEBUG MONITOR: Message text: {message_text}")
-                    print(f"DEBUG MONITOR: Current query: {self.user_prompt}")
+                    
+                    # Get the current query dynamically from the query store
+                    current_query = get_current_query()
+                    print(f"DEBUG MONITOR: Current query: {current_query}")
                     print(f"DEBUG MONITOR: AI enabled: {self.ai_processor.enabled}")
                     print("DEBUG MONITOR: Calling AI processor...")
                     
+                    # Use the dynamic query from the query store
                     is_relevant = await self.ai_processor.is_message_relevant(
-                        message_text, self.user_prompt
+                        message_text, current_query
                     )
+                    #is_relevant = True # TEMP OVERRIDE FOR TESTING
                     print(f"DEBUG MONITOR: Got relevance result: {is_relevant}")
                     print("DEBUG MONITOR: ===============================\n")
 
@@ -423,7 +430,7 @@ class TelegramChannelMonitor:
             if self.ai_processor.enabled:
                 print("\n🎯 AI FILTER RESULT:")
                 print("-" * 50)
-                print(f"Query: {self.user_prompt}")
+                print(f"Query: {get_current_query()}")
                 print("Status: ✅ RELEVANT - Message passed AI filter")
                 print("-" * 50)
 

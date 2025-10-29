@@ -1,10 +1,13 @@
-# USER_PROMPT = """
-# Find all messages that are related to discounts on cars
-# """
+# Import the query store to get dynamic queries
+from query_store import get_current_query
 
-USER_PROMPT = """
-Find all messages that have words on it.
-"""
+# Legacy variable - use get_current_query() for dynamic queries
+# This is kept for backward compatibility, but prefer get_current_query()
+USER_PROMPT = get_current_query()
+
+def get_user_prompt():
+    """Get the current user prompt dynamically from the query store."""
+    return get_current_query()
 
 SYSTEM_PROMPT = """
 You are an expert at analyzing Telegram channel messages. Your task is to identify and extract messages that are related to a user's query.
