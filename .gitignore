@@ -8,5 +8,4 @@ telegramenv/
 venv/
 env/
 
-# User-specific query data (generated at runtime)
-user_query.json
+*.json
