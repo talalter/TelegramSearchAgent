@@ -22,9 +22,6 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 API_ID = os.getenv("api_id")
 API_HASH = os.getenv("api_hash")
 
-# Use a separate session for bot operations to avoid conflicts with monitor.py
-telethon_client = None  # Will be initialized when needed
-
 async def start(update, context):
     """Send welcome message with current search query and available commands."""
     welcome_text = (
@@ -74,6 +71,7 @@ async def show_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"Current search query:\n{get_current_query()}"
     )
+
 
 async def get_my_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show your Telegram user ID."""
@@ -172,7 +170,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def list_channels(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """List channels from your user account using a separate session."""
-    global telethon_client
     user = update.effective_user
     requester = f"@{user.username}" if getattr(user, "username", None) else getattr(user, "first_name", "You")
     
