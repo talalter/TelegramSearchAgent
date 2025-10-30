@@ -225,23 +225,15 @@ class TelegramChannelMonitor:
                     if not message_text:
                         message_text = "[Non-text content]"
 
-                    print("\nDEBUG MONITOR: ===============================")
-                    print(f"DEBUG MONITOR: Channel ID: {chat.id}")
-                    print(f"DEBUG MONITOR: Message text: {message_text}")
-                    
+           
                     # Get the current query dynamically from the query store
                     current_query = get_current_query()
-                    print(f"DEBUG MONITOR: Current query: {current_query}")
-                    print(f"DEBUG MONITOR: AI enabled: {self.ai_processor.enabled}")
-                    print("DEBUG MONITOR: Calling AI processor...")
-                    
+
                     # Use the dynamic query from the query store
-                    # is_relevant = await self.ai_processor.is_message_relevant(
-                    #     message_text, current_query
-                    # )
-                    is_relevant = True # TEMP OVERRIDE FOR TESTING
-                    print(f"DEBUG MONITOR: Got relevance result: {is_relevant}")
-                    print("DEBUG MONITOR: ===============================\n")
+                    is_relevant = await self.ai_processor.is_message_relevant(
+                        message_text, current_query
+                    )
+                    # is_relevant = True # TEMP OVERRIDE FOR TESTING
 
                     if is_relevant:
                         logger.info("Message is relevant to query, processing...")

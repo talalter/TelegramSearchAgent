@@ -66,3 +66,7 @@ def run() -> None:
     except Exception as exc:
         logger.error("Error running monitor: %s", exc)
         print(f"Error: {exc}")
+
+
+if __name__ == "__main__":
+    run()

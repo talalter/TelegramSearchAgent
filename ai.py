@@ -26,21 +26,17 @@ class MistralAIProcessor:
     """Process messages using the Mistral AI API via LangChain."""
 
     def __init__(self, api_key: Optional[str] = None, custom_prompt: Optional[str] = None):
-        print("DEBUG: Initializing AI Processor")
         if not LANGCHAIN_AVAILABLE:
-            print("DEBUG: LangChain not available!")
             self.enabled = False
             return
 
-        self.api_key = os.getenv("MISTRAL_API_KEY")
-        print(f"DEBUG: Mistral API Key present: {bool(self.api_key)}")
+        self.api_key = api_key or os.getenv("MISTRAL_API_KEY")
         if not self.api_key:
             logger.warning("Mistral API key not found. AI processing will be disabled.")
             self.enabled = False
             return
 
         self.enabled = True
-        print("DEBUG: AI Processor enabled successfully")
 
         try:
             self.llm = ChatMistralAI(
@@ -90,27 +86,18 @@ Keep your response concise and informative."""
 
     async def is_message_relevant(self, message_text: str, user_query: str) -> bool:
         """Check if a message is relevant to the user's query using LLM."""
-        # print(f'DEBUG AI: Checking relevance')
-        # print(f'DEBUG AI: Message text: "{message_text}"')
-        # print(f'DEBUG AI: User query: "{user_query}"')
-        # print(f'DEBUG AI: AI Enabled: {self.enabled}')
         if not self.enabled:
-            print('DEBUG AI: AI processing is disabled!')
             return True
 
         try:
             relevance_prompt = ChatPromptTemplate.from_template(SYSTEM_PROMPT)
-            # print('DEBUG AI: Created relevance prompt template')
             chain = relevance_prompt | self.llm
-            # print(f'chain: {chain}')
-            print(f'self.api_key: {self.api_key}')
             response = await chain.ainvoke(
                 {
                     "user_query": user_query,
                     "message_text": message_text,
                 }
             )
-            print(f'response: {response}')
             response_text = (
                 str(response.content) if hasattr(response, "content") else str(response)
             ).strip().upper()
