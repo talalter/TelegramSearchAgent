@@ -48,8 +48,8 @@ async def run_monitor() -> None:
     _print_ai_status()
     print()
 
-    monitor = TelegramChannelMonitor(custom_prompt=SYSTEM_PROMPT, user_prompt=USER_PROMPT)
-    await monitor.run_monitor(channels_to_monitor)
+    monitor = TelegramChannelMonitor()
+    await monitor.run_monitor()
 
 
 async def main() -> None:

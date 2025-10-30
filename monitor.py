@@ -10,10 +10,8 @@ from typing import List, Optional, Sequence, Set
 import httpx
 from telethon import TelegramClient, events
 
-import prompts
-#from prompts import USER_PROMPT, SYSTEM_PROMPT
 from query_store import get_current_query
-
+from channel_store import get_monitored_channels
 from ai import MistralAIProcessor
 from config import get_logger
 
@@ -52,11 +50,7 @@ async def generate_response(message_text: str) -> str:
 class TelegramChannelMonitor:
     """Monitor Telegram channels for new messages."""
 
-    def __init__(
-        self,
-        custom_prompt: Optional[str] = None,
-        user_prompt: Optional[str] = None
-    ) -> None:
+    def __init__(self) -> None:
         self.api_id = os.getenv("api_id")
         self.api_hash = os.getenv("api_hash")
         self.bot_token = os.getenv("BOT_TOKEN")
@@ -66,10 +60,8 @@ class TelegramChannelMonitor:
             raise ValueError("API credentials not found in .env file")
 
         self.client = TelegramClient("telegram_session", int(self.api_id), self.api_hash)
-        self.monitored_channels: Set[int] = set()
         self.ai_processor = MistralAIProcessor()
         self.user_entity = None
-        self.user_prompt = user_prompt or get_current_query()
 
     async def start(self) -> None:
         """Start the Telegram client and authenticate."""
@@ -100,8 +92,8 @@ class TelegramChannelMonitor:
     async def send_message_via_bot(self, message, chat, source_chat_name: str) -> bool:
         """Send relevant message info via bot to the user."""
         if not self.bot_token or not self.user_chat_id:
-            logger.warning("Bot token or user chat ID not configured. Falling back to self-forwarding.")
-            return await self.forward_message_to_self(message, source_chat_name)
+            logger.error("Bot token or user chat ID not configured. Cannot send messages.")
+            return False
 
         try:
             # Format the message content
@@ -180,126 +172,25 @@ class TelegramChannelMonitor:
             logger.error("Failed to send message via bot: %s", exc)
             return False
 
-    async def forward_message_via_bot(self, message, chat, source_chat_name: str) -> bool:
-        """Forward the actual message via bot to the user."""
-        if not self.bot_token or not self.user_chat_id:
-            logger.warning("Bot token or user chat ID not configured. Falling back to self-forwarding.")
-            return await self.forward_message_to_self(message, source_chat_name)
-
-        try:
-            # Forward the actual message using Bot API
-            forward_url = f"https://api.telegram.org/bot{self.bot_token}/forwardMessage"
-            forward_payload = {
-                "chat_id": self.user_chat_id,
-                "from_chat_id": chat.id,
-                "message_id": message.id
-            }
-
-            async with httpx.AsyncClient() as client:
-                forward_response = await client.post(forward_url, json=forward_payload)
-                
-                if forward_response.status_code == 200:
-                    logger.info("Successfully forwarded message via bot from %s", source_chat_name)
-                    
-                    # Optionally send context information after forwarding
-                    await self._send_forward_context(chat, source_chat_name)
-                    
-                    return True
-                else:
-                    logger.error("Bot API error when forwarding: %s", forward_response.text)
-                    return False
-
-        except Exception as exc:
-            logger.error("Failed to forward message via bot: %s", exc)
-            return False
-
-    async def _send_forward_context(self, chat, source_chat_name: str) -> None:
-        """Send context information after forwarding a message."""
-        try:
-            channel_name = getattr(chat, "title", "Unknown Channel")
-            username = getattr(chat, "username", "N/A")
-            
-            context_message = f"↗️ **FORWARDED FROM MONITORED CHANNEL**\n\n"
-            context_message += f"**Channel:** {channel_name}\n"
-            if username and username != "N/A":
-                context_message += f"**Username:** @{username}\n"
-            context_message += f"**Query Match:** {get_current_query()}\n"
-            context_message += f"**Relevance:** ✅ AI Approved"
-
-            # Create message link if possible
-            message_link = None
-            if hasattr(chat, 'username') and chat.username:
-                context_message += f"\n**Channel Link:** https://t.me/{chat.username}"
-            
-            context_url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
-            context_payload = {
-                "chat_id": self.user_chat_id,
-                "text": context_message,
-                "parse_mode": "Markdown"
-            }
-
-            async with httpx.AsyncClient() as client:
-                await client.post(context_url, json=context_payload)
-                
-        except Exception as exc:
-            logger.error("Failed to send forward context: %s", exc)
-
-    async def forward_message_to_self(self, message, source_chat_name: str) -> bool:
-        """Forward a relevant message to the user's own Telegram account."""
-        if not self.user_entity:
-            logger.error("User entity not available for message forwarding")
-            return False
-
-        try:
-            await self.client.forward_messages(
-                entity=self.user_entity,
-                messages=message,
-                from_peer=message.peer_id,
-            )
-            logger.info("Successfully forwarded message to self from %s", source_chat_name)
-            return True
-        except Exception as exc:  # pragma: no cover - network failures etc.
-            logger.error("Failed to forward message to self: %s", exc)
-            return False
-
-    async def add_channel_to_monitor(self, channel_username: str) -> bool:
-        """Add a single channel to the monitoring list."""
-        try:
-            username = channel_username[1:] if channel_username.startswith("@") else channel_username
-            print(f"\nDEBUG CHANNEL ADD: Looking up channel: {username}")
-            channel = await self.client.get_entity(username)
-            print(f"DEBUG CHANNEL ADD: Found channel ID: {channel.id}")
-            print(f"DEBUG CHANNEL ADD: Current monitored channels before add: {self.monitored_channels}")
-            self.monitored_channels.add(channel.id)
-            print(f"DEBUG CHANNEL ADD: Monitored channels after add: {self.monitored_channels}\n")
-            logger.info(
-                "Successfully added channel to monitoring: @%s (ID: %s)",
-                username,
-                getattr(channel, "id", "Unknown"),
-            )
-            return True
-        except Exception as exc:  # pragma: no cover - network failures etc.
-            logger.error("Failed to add channel @%s to monitoring: %s", channel_username, exc)
-            return False
-
-    async def add_channels_to_monitor(self, channels: Sequence[str]) -> Set[str]:
-        """Add channels to monitor."""
-        added = set()
+    async def validate_channels_from_store(self) -> Set[str]:
+        """Validate that channels from store exist and are accessible."""
+        channels = get_monitored_channels()
+        print(f"📂 Loading channels from channel store: {channels}")
+        
+        validated_channels = set()
         for channel in channels:
             try:
-                print(f"DEBUG: Trying to get entity for channel: {channel}")
+                print(f"🔍 Validating channel: {channel}")
                 entity = await self.client.get_entity(channel)
                 if entity:
-                    print(f"DEBUG: Got entity for {channel}: ID={entity.id}, type={type(entity)}")
-                    #self.monitored_channels.add(entity.id)
-                    self.monitored_channels.add(channel)
-
-                    added.add(channel)
+                    print(f"✅ Channel '{channel}' validated (ID: {entity.id})")
+                    validated_channels.add(channel)
             except ValueError as e:
-                print(f"❌ Error adding channel '{channel}': {e}")
+                print(f"❌ Channel '{channel}' not found or not accessible: {e}")
             except Exception as e:
-                print(f"❌ Unexpected error adding channel '{channel}': {type(e).__name__}: {e}")
-        return added
+                print(f"❌ Error validating channel '{channel}': {type(e).__name__}: {e}")
+        
+        return validated_channels
 
     def setup_message_handler(self) -> None:
         """Set up the event handler for new messages."""
@@ -324,10 +215,10 @@ class TelegramChannelMonitor:
                         safe_chat_name,
                         getattr(chat, "id", "Unknown"),
                     )
-                logger.info("Monitored channels: %s", self.monitored_channels)
-                print(f'chat_name: {chat_name}, monitored_channels: {self.monitored_channels}')
-                #if (hasattr(chat, "id") and chat.id in self.monitored_channels):
-                if (chat_name in self.monitored_channels):
+                monitored_channels = get_monitored_channels()
+                logger.info("Monitored channels: %s", monitored_channels)
+                print(f'chat_name: {chat_name}, monitored_channels: {monitored_channels}')
+                if chat_name in monitored_channels:
 
                     logger.info("Processing message from monitored channel: %s", chat.id)
                     message_text = message.text or ""
@@ -345,24 +236,20 @@ class TelegramChannelMonitor:
                     print("DEBUG MONITOR: Calling AI processor...")
                     
                     # Use the dynamic query from the query store
-                    is_relevant = await self.ai_processor.is_message_relevant(
-                        message_text, current_query
-                    )
-                    #is_relevant = True # TEMP OVERRIDE FOR TESTING
+                    # is_relevant = await self.ai_processor.is_message_relevant(
+                    #     message_text, current_query
+                    # )
+                    is_relevant = True # TEMP OVERRIDE FOR TESTING
                     print(f"DEBUG MONITOR: Got relevance result: {is_relevant}")
                     print("DEBUG MONITOR: ===============================\n")
 
                     if is_relevant:
                         logger.info("Message is relevant to query, processing...")
                         await self.process_new_message(message, chat)
-                        
-                        # Choose between forwarding or sending summary
-                        # Option 1: Send summary with clickable link (current implementation)
+
+                        # Send summary with clickable link (current implementation)
                         sent = await self.send_message_via_bot(message, chat, chat_name)
-                        
-                        #Option 2: Forward actual message (uncomment to use instead)
-                        #sent = await self.forward_message_via_bot(message, chat, chat_name)
-                        
+                             
                         if sent:
                             print("📤 Message sent to your bot!")
                         else:
@@ -452,6 +339,7 @@ class TelegramChannelMonitor:
         except Exception as exc:  # pragma: no cover - runtime errors from API
             logger.error("Error processing message details: %s", exc)
 
+
     async def get_channel_info(self, channel_username: str) -> None:
         """Get and display information about a channel."""
         try:
@@ -471,30 +359,30 @@ class TelegramChannelMonitor:
         except Exception as exc:  # pragma: no cover - network failures etc.
             logger.error("Failed to get channel info for @%s: %s", channel_username, exc)
 
-    async def run_monitor(self, channels: Sequence[str]) -> None:
-        """Run the channel monitor end-to-end."""
+
+    async def run_monitor(self) -> None:
+        """Run the channel monitor end-to-end. Loads channels from channel store."""
         try:
             await self.start()
 
-            print(f"\n🔗 Adding {len(channels)} channels to monitoring...")
-            print(f"DEBUG: Channels to add: {channels}")
-            self.monitored_channels.clear()  # Clear existing channels
-            print(f"DEBUG: Cleared monitored channels: {self.monitored_channels}")
-            added = await self.add_channels_to_monitor(channels)
-            print(f"✅ Successfully added {len(added)} channels to monitoring")
-            print(f"DEBUG: Final monitored channels: {self.monitored_channels}")
+            # Validate channels from persistent store
+            validated_channels = await self.validate_channels_from_store()
+            print(f"\n✅ Successfully loaded {len(validated_channels)} channels from store")
+            print(f"📋 Active channels: {validated_channels}")
 
-            if not added:
-                print("❌ No channels added to monitoring. Exiting...")
+            if not validated_channels:
+                print("❌ No valid channels found in store. Add channels via bot first!")
+                print("💡 Use the bot commands: /addchannel <channelname>")
                 return
 
-            for channel in added:
+            # Get info for each validated channel
+            for channel in validated_channels:
                 await self.get_channel_info(channel)
                 await asyncio.sleep(0.5)
 
             self.setup_message_handler()
 
-            print(f"\n👂 Monitoring {len(added)} channels for new messages...")
+            print(f"\n👂 Monitoring {len(validated_channels)} channels for new messages...")
             print("Press Ctrl+C to stop monitoring\n")
 
             try:

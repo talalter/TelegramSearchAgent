@@ -1,8 +1,5 @@
 import os
 import sys
-import asyncio
-from datetime import datetime, timedelta
-from typing import Dict, Optional, List
 
 from dotenv import load_dotenv
 from telethon import TelegramClient
@@ -12,7 +9,6 @@ from telegram.ext import (
     Application, CommandHandler, MessageHandler, ContextTypes, filters,
 )
 
-import prompts
 from monitor import generate_response
 from config import get_logger
 from channel_store import add_channel, remove_channel, get_monitored_channels
